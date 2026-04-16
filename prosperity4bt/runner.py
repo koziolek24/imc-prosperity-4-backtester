@@ -91,7 +91,8 @@ def create_activity_logs(
 
         position = state.position.get(product, 0)
         if position != 0:
-            product_profit_loss += position * row.mid_price
+            mtm_price = row.mid_price if row.mid_price > 0 else 10000
+            product_profit_loss += position * mtm_price
 
         bid_prices_len = len(row.bid_prices)
         bid_volumes_len = len(row.bid_volumes)
@@ -405,5 +406,25 @@ def run_backtest(
         create_activity_logs(state, data, result)
         enforce_limits(state, data, orders, sandbox_row, limits_override)
         match_orders(state, data, orders, result, trade_matching_mode, limits_override)
+
+    if len(timestamps) > 0:
+        last_timestamp = timestamps[-1]
+        for product in data.products:
+            position = state.position.get(product, 0)
+            if position == 0:
+                continue
+
+            row = data.prices.get(last_timestamp, {}).get(product)
+            if row is None:
+                continue
+            
+            mtm_price = row.mid_price if row.mid_price > 0 else 10000
+
+            if position > 0:
+                settlement_trade = Trade(product, int(mtm_price), position, "SETTLEMENT", "SUBMISSION", last_timestamp)
+            else:
+                settlement_trade = Trade(product, int(mtm_price), abs(position), "SUBMISSION", "SETTLEMENT", last_timestamp)
+
+            result.trades.append(TradeRow(settlement_trade))
 
     return result
